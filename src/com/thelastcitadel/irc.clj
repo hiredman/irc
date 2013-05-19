@@ -78,51 +78,60 @@
                                 ::bid bid
                                 ::eid eid)))))]
     (.put bots bid b)
-    bid))
+    {:status 201
+     :body bid}))
+
+(defn destroy-bot [bid]
+  (try
+    (.disconnect (.get bots bid))
+    (.dispose (.get bots bid))
+    (catch Exception _))
+  (.remove bots bid)
+  {:status 200
+   :body bid})
+
+(defn get-channels [bid]
+  {:status 200
+   :body (pr-str (set (.getChannels (.get bots bid))))})
+
+(defn join-channel [bid channel]
+  (.joinChannel (.get bots bid) channel)
+  {:status 200
+   :body (pr-str #{})})
+
+(defn get-users [bid channel]
+  {:status 200
+   :body (pr-str (set (map #(.getNick %) (.getUsers (.get bots bid) channel))))})
+
+(defn part-channel [bid channel reason]
+  (if reason
+    (.partChannel (.get bots bid) channel reason)
+    (.partChannel (.get bots bid) channel))
+  {:status 200
+   :body (pr-str #{})})
+
+(defn get-events [bid]
+  {:status 200
+   :body (pr-str (get @events bid))})
+
+(defn get-event [bid eid]
+  {:status 200
+   :body (pr-str (get (get @events bid) eid))})
+
+(defn delete-event [bid eid]
+  (swap! events update-in [bid] dissoc eid)
+  {:status 200
+   :body (pr-str #{})})
 
 (defroutes irc
-  (POST "/" {{:keys [server port nick password]} :params}
-        (let [id (create-bot server port nick password)]
-          {:status 201
-           :body id}))
-  (DELETE "/:bid" {{:keys [bid]} :params}
-          (do
-            (try
-              (.disconnect (.get bots bid))
-              (.dispose (.get bots bid))
-              (catch Exception _))
-            (.remove bots bid)
-            {:status 200
-             :body bid}))
-  (GET "/:bid/channels" {{:keys [bid]} :params}
-       {:status 200
-        :body (pr-str (set (.getChannels (.get bots bid))))})
-  (POST "/:bid/channel/:channel" {{:keys [bid channel]} :params}
-        (do
-          (.joinChannel (.get bots bid) channel)
-          {:status 200
-           :body (pr-str #{})}))
-  (GET "/:bid/channel/:channel" {{:keys [bid channel]} :params}
-       {:status 200
-        :body (pr-str (set (map #(.getNick %) (.getUsers (.get bots bid) channel))))})
-  (DELETE "/:bid/channel/:channel" {{:keys [bid channel reason]} :params}
-          (do
-            (if reason
-              (.partChannel (.get bots bid) channel reason)
-              (.partChannel (.get bots bid) channel))
-            {:status 200
-             :body (pr-str #{})}))
-  (GET "/:bid/events" {{:keys [bid]} :params}
-       {:status 200
-        :body (pr-str (get @events bid))})
-  (GET "/:bid/event/:ied" {{:keys [bid eid]} :params}
-       {:status 200
-        :body (pr-str (get (get @events bid) eid))})
-  (DELETE "/:bid/event/:eid" {{:keys [bid eid]} :params}
-          (do
-            (swap! events update-in [bid] dissoc eid)
-            {:status 200
-             :body (pr-str #{})}))
-  )
+  (POST "/" {{:keys [server port nick password]} :params} (create-bot server port nick password))
+  (DELETE "/:bid" {{:keys [bid]} :params} (destroy-bot bid))
+  (GET "/:bid/channels" {{:keys [bid]} :params} (get-channels bid))
+  (POST "/:bid/channel/:channel" {{:keys [bid channel]} :params} (join-channel bid channel))
+  (GET "/:bid/channel/:channel" {{:keys [bid channel]} :params} (get-users bid channel))
+  (DELETE "/:bid/channel/:channel" {{:keys [bid channel reason]} :params} (part-channel bid channel reason))
+  (GET "/:bid/events" {{:keys [bid]} :params} (get-events bid))
+  (GET "/:bid/event/:ied" {{:keys [bid eid]} :params} (get-event bid eid))
+  (DELETE "/:bid/event/:eid" {{:keys [bid eid]} :params} (delete-event bid eid)))
 
 (def handler (-> #'irc handler/api))
