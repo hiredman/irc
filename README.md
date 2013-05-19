@@ -18,6 +18,12 @@ This is a REST service for irc.
 - DELETE /{bid}/event/{eid} deletes the event
 - see com.thelastcitadel.irc/irc
 
+## Deployment
+
+- build with `lein ring uberwar`
+- run war with your favorite servlet container
+- I like jetty-runner
+
 ## License
 
 Copyright © 2013 Kevin Downey
