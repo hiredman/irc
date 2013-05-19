@@ -1,4 +1,4 @@
-(defproject com.thelastcitadel/irc "0.1.0-SNAPSHOT"
+(defproject com.thelastcitadel/irc "0.0.1"
   :description "a rest service for irc"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
