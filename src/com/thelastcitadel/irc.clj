@@ -11,6 +11,14 @@
       (doto (.setAccessible true))
       (.invoke obj (into-array Object args))))
 
+(defmacro m [type & items]
+  `(~'fun
+    ~(assoc (into {} (for [item items] [(keyword (name item)) item]))
+       :time `(System/currentTimeMillis)
+       :nick 'nick
+       :type type
+       :server 'server)))
+
 (defn pircbot [server nick fun]
   (let [connector (if (coll? server)
                     (fn [conn]
@@ -19,27 +27,24 @@
                     #(.connect % server))
         server (if (coll? server) (first server) server)
         conn (proxy [PircBot] []
+               (onAction [sender login hostname target action]
+                 (m :action sender login hostname target action))
+               (onChannelInfo [channel user-count topic]
+                 (m :channel-info channel user-count topic))
+               (onConnect []
+                 (m :connect))
                (onDisconnect []
                  (connector this))
+               (onInvite [target-nick source-nick source-login source-hostname channel]
+                 (m :invite target-nick source-nick source-login source-hostname channel))
                (onJoin [channel sender login hostname]
-                 (fun {:channel channel
-                       :sender sender
-                       :login login
-                       :hostname hostname
-                       :server server
-                       :nick nick
-                       :type :join
-                       :time (System/currentTimeMillis)}))
+                 (m :join channel sender login hostname))
                (onMessage [channel sender login hostname message]
-                 (fun {:channel channel
-                       :sender sender
-                       :login login
-                       :hostname hostname
-                       :message message
-                       :server server
-                       :nick nick
-                       :type :message
-                       :time (System/currentTimeMillis)})))]
+                 (m :message channel sender login hostname message))
+               (onNotice [source-nick source-login source-hostname target notice]
+                 (m :notice source-nick source-login source-hostname target notice))
+               (onPrivateMessage [sender login hostname message]
+                 (m :private-message sender login hostname message)))]
     (wall-hack-method
      org.jibble.pircbot.PircBot :setName [String] conn nick)
     (connector conn)
@@ -97,6 +102,9 @@
           (.joinChannel (.get bots bid) channel)
           {:status 200
            :body (pr-str #{})}))
+  (GET "/:bid/channel/:channel" {{:keys [bid channel]} :params}
+       {:status 200
+        :body (pr-str (set (map #(.getNick %) (.getUsers (.get bots bid) channel))))})
   (DELETE "/:bid/channel/:channel" {{:keys [bid channel reason]} :params}
           (do
             (if reason

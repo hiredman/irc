@@ -25,6 +25,10 @@
       (is (empty? channels)))
     (http/post (str "http://localhost:10000/" bid "/channel/" (URLEncoder/encode "#clojurebot")))
     (Thread/sleep 10000)
+    (let [{:keys [body]}
+          (http/get (str "http://localhost:10000/" bid "/channel/" (URLEncoder/encode "#clojurebot")))
+          users (read-string body)]
+      (is (contains? users "clojurebot")))
     (let [{:keys [body]} (http/get (str "http://localhost:10000/" bid "/channels"))
           channels (read-string body)]
       (is (= #{"#clojurebot"} channels)))
