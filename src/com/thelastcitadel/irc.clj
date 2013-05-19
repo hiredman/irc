@@ -1,7 +1,9 @@
 (ns com.thelastcitadel.irc
-  (:require [compojure.core :refer [GET POST DELETE defroutes]]
+  (:require [compojure.core :refer [GET POST PUT DELETE defroutes]]
             [compojure.route :as route]
-            [compojure.handler :as handler])
+            [compojure.handler :as handler]
+            [clojure.edn :as r]
+            [clojure.java.io :as io])
   (:import (java.util UUID)
            (java.util.concurrent ConcurrentHashMap)
            (org.jibble.pircbot PircBot)))
@@ -123,6 +125,18 @@
   {:status 200
    :body (pr-str #{})})
 
+(defn send-out [bid body]
+  (let [m (binding [*in* (-> body io/reader java.io.PushbackReader.)]
+            (r/read))
+        b (.get bots bid)]
+    (case (:type m)
+      :action (.sendMessage b (:target m) (:action m))
+      :invite (.sendInvite b (:nick m) (:channel m))
+      :message (.sendMessage b (:target m) (:message m))
+      :notice (.sendNotice b (:target m) (:notice m)))
+    {:status 200
+     :body (pr-str #{})}))
+
 (defroutes irc
   (POST "/" {{:keys [server port nick password]} :params} (create-bot server port nick password))
   (DELETE "/:bid" {{:keys [bid]} :params} (destroy-bot bid))
@@ -132,6 +146,7 @@
   (DELETE "/:bid/channel/:channel" {{:keys [bid channel reason]} :params} (part-channel bid channel reason))
   (GET "/:bid/events" {{:keys [bid]} :params} (get-events bid))
   (GET "/:bid/event/:ied" {{:keys [bid eid]} :params} (get-event bid eid))
-  (DELETE "/:bid/event/:eid" {{:keys [bid eid]} :params} (delete-event bid eid)))
+  (DELETE "/:bid/event/:eid" {{:keys [bid eid]} :params} (delete-event bid eid))
+  (PUT "/:bid/send" {:keys [body] {:keys [bid]} :params} (send-out bid body)))
 
 (def handler (-> #'irc handler/api))
