@@ -137,7 +137,16 @@
     {:status 200
      :body (pr-str #{})}))
 
+(defn list-bots []
+  {:status 200
+   :body (pr-str (set (for [[id bot] bots]
+                        {:nick (.getNick bot)
+                         :port (.getPort bot)
+                         :server (.getServer bot)
+                         ::bid id})))})
+
 (defroutes irc
+  (GET "/" [request] (list-bots))
   (POST "/" {{:keys [server port nick password]} :params} (create-bot server port nick password))
   (DELETE "/:bid" {{:keys [bid]} :params} (destroy-bot bid))
   (GET "/:bid/channels" {{:keys [bid]} :params} (get-channels bid))
