@@ -154,7 +154,7 @@
   (GET "/:bid/channel/:channel" {{:keys [bid channel]} :params} (get-users bid channel))
   (DELETE "/:bid/channel/:channel" {{:keys [bid channel reason]} :params} (part-channel bid channel reason))
   (GET "/:bid/events" {{:keys [bid]} :params} (get-events bid))
-  (GET "/:bid/event/:ied" {{:keys [bid eid]} :params} (get-event bid eid))
+  (GET "/:bid/event/:eid" {{:keys [bid eid]} :params} (get-event bid eid))
   (DELETE "/:bid/event/:eid" {{:keys [bid eid]} :params} (delete-event bid eid))
   (PUT "/:bid/send" {:keys [body] {:keys [bid]} :params} (send-out bid body)))
 
