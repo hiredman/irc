@@ -24,6 +24,10 @@ This is a REST service for irc.
 - run war with your favorite servlet container
 - I like jetty-runner
 
+## Types
+
+I chose this project to play with core.typed, so it is typed more or less.
+
 ## License
 
 Copyright © 2013 Kevin Downey
