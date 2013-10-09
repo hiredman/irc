@@ -34,7 +34,27 @@
                    :source-hostname String
                    :message String
                    :notice String}))
-(t/def-alias CompleteEvent (U Event (HMap :mandatory {::bid String ::eid String})))
+(t/def-alias CompleteEvent
+  (HMap :mandatory {:time Long
+                    :nick String
+                    :type clojure.lang.Keyword
+                    :server String
+                    ::bid String
+                    ::eid String}
+        :optional {:sender String
+                   :login String
+                   :hostname String
+                   :target String
+                   :action String
+                   :channel String
+                   :user-count Number
+                   :topic String
+                   :target-nick String
+                   :source-nick String
+                   :source-login String
+                   :source-hostname String
+                   :message String
+                   :notice String}))
 (t/def-alias EventCallback (Fn [Event -> Any]))
 (t/def-alias EventMap (IPersistentMap String (IPersistentMap String CompleteEvent)))
 (t/def-alias RingResponse (HMap :mandatory {:status Number :body String}))
