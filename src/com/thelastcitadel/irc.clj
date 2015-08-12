@@ -4,7 +4,8 @@
             [compojure.handler :as handler]
             [clojure.edn :as r]
             [clojure.java.io :as io]
-            [ clojure.core.typed :as t])
+            [clojure.core.typed :as t]
+            [com.thelastcitadel.irc.fifo :as fifo])
   (:import (java.util UUID)
            (java.util.concurrent ConcurrentHashMap)
            (org.jibble.pircbot PircBot
@@ -12,10 +13,11 @@
            (clojure.lang Named
                          IPersistentVector
                          IPersistentMap
-                         IMapEntry)))
+                         IMapEntry)
+           (com.thelastcitadel.irc.fifo Fifo)))
 
 ;; Type Aliases
-(t/def-alias Event
+(t/defalias Event
   (HMap :mandatory {:time Long
                     :nick String
                     :type clojure.lang.Keyword
@@ -34,7 +36,7 @@
                    :source-hostname String
                    :message String
                    :notice String}))
-(t/def-alias CompleteEvent
+(t/defalias CompleteEvent
   (HMap :mandatory {:time Long
                     :nick String
                     :type clojure.lang.Keyword
@@ -55,47 +57,42 @@
                    :source-hostname String
                    :message String
                    :notice String}))
-(t/def-alias EventCallback (Fn [Event -> Any]))
-(t/def-alias EventMap (IPersistentMap String (IPersistentMap String CompleteEvent)))
-(t/def-alias RingResponse (HMap :mandatory {:status Number :body String}))
-(t/def-alias BotEntry (HMap :mandatory {:nick String :port Number :server String ::bid String}))
-;; Var Types
-;;; no-check
-;;;; clojure.core
-(t/ann ^:no-check clojure.core/coll? [Any -> Boolean])
-(t/ann ^:no-check clojure.core/assoc-in (All [x] [x (t/Seqable Any) Any -> x]))
-(t/ann ^:no-check clojure.core/update-in (All [x y z a] [x (t/Seqable Any) (Fn [y * -> z]) a * -> x]))
-;; (t/ann ^:no-check clojure.core/update-in (All [x y z a] [x (t/Seqable Any) (Fn [x y * -> x]) a * -> x]))
-(t/ann ^:no-check clojure.core/*in* java.io.PushbackReader)
-(t/ann ^:no-check clojure.edn/read [-> Any])
-(t/ann ^:no-check clojure.java.io/reader [Any -> java.io.Reader])
-(t/ann ^:no-check clojure.core/val (All [x y] [(IMapEntry x y) -> y]))
-;;;;
-(t/ann ^:no-check wall-hack-method [Class Named (t/Seqable Class) Any Any * -> Object])
-(t/ann ^:no-check pircbot* [String String EventCallback (Fn [PircBot -> Any]) -> PircBot])
-(t/ann ^:no-check x [ -> Nothing])
+(t/defalias EventCallback (t/IFn [Event -> t/Any]))
+(t/defalias RingResponse (HMap :mandatory {:status Number :body String}))
+(t/defalias BotEntry (HMap :mandatory {:nick String :port Number :server String ::bid String}))
+;; ;; Var Types
+;; ;;; no-check
+;; ;;;; clojure.core
+(t/ann ^:no-check clojure.edn/read [-> t/Any])
+(t/ann ^:no-check clojure.java.io/reader [t/Any -> java.io.Reader])
+;; ;;;;
+(t/ann ^:no-check wall-hack-method [Class Named (t/Seqable Class) t/Any t/Any * -> Object])
+(t/ann ^:no-check pircbot* [String String EventCallback (t/IFn [PircBot -> t/Any]) -> PircBot])
 (t/ann ^:no-check complete-event [Event String String -> CompleteEvent])
 (t/ann ^:no-check bot-seq [-> (clojure.lang.ISeq (IMapEntry String PircBot))])
 (t/ann ^:no-check handler [(HMap :mandatory {}) -> RingResponse])
 (t/ann ^:no-check irc [(HMap :mandatory {}) -> RingResponse])
-;;;
-(t/ann pircbot (Fn [String String EventCallback -> PircBot] [(IPersistentVector Any) String EventCallback -> PircBot]))
+;; ;;;
+(t/ann pircbot (t/IFn [String String EventCallback -> PircBot]
+                      [(IPersistentVector t/Any) String EventCallback -> PircBot]))
+(t/ann events (t/Atom1 Fifo))
 (t/ann bots ConcurrentHashMap)
 (t/ann get-bot [String -> PircBot])
-(t/ann events (t/Atom1 EventMap))
-(t/ann create-bot [String Number String String -> RingResponse])
+(t/ann create-bot [String String Number String String -> RingResponse])
 (t/ann destroy-bot [String -> RingResponse])
 (t/ann get-channels [String -> RingResponse])
 (t/ann join-channel [String String -> RingResponse])
 (t/ann get-events [String -> RingResponse])
 (t/ann get-users [String String -> RingResponse])
-(t/ann part-channel [String String (U nil String) -> RingResponse])
+(t/ann part-channel [String String (t/U nil String) -> RingResponse])
 (t/ann get-event [String String -> RingResponse])
 (t/ann delete-event [String String -> RingResponse])
 (t/ann send-out [String String -> RingResponse])
 (t/ann list-bots [-> RingResponse])
 
 (defn wall-hack-method [^Class class-name name- params obj & args]
+  (assert (or (string? name-)
+              (instance? clojure.lang.Named name-)))
   (let [method-name (name name-)
         param-classes (into-array Class params)
         method (.getDeclaredMethod class-name method-name param-classes)]
@@ -134,15 +131,15 @@
 
 (defn pircbot [server nick fun]
   (let [connector (if (coll? server)
-                    (t/fn> [conn :- PircBot]
-                           (let [[server port pass] server]
-                             (assert (string? server))
-                             (assert (instance? Integer port))
-                             (assert (string? pass))
-                             (.connect ^PircBot conn server port pass)))
-                    (t/fn> [conn :- PircBot]
-                           (assert (string? server))
-                           (.connect ^PircBot conn server)))
+                    (t/fn [conn :- PircBot]
+                      (let [[server port pass] server]
+                        (assert (string? server))
+                        (assert (instance? Integer port))
+                        (assert (string? pass))
+                        (.connect ^PircBot conn server port pass)))
+                    (t/fn [conn :- PircBot]
+                      (assert (string? server))
+                      (.connect ^PircBot conn server)))
         server (if (coll? server) (first server) server)
         _ (assert (string? server))
         conn (pircbot* server nick fun connector)]
@@ -160,44 +157,29 @@
     (assert (instance? PircBot bot))
     bot))
 
-(def events (atom {}))
-
-(defn x []
-  (add-watch events ::expire
-             (fn [k r ov nv]
-               (when (not= ov nv)
-                 (when-let [exp (seq (for [[bid evs] @events
-                                           [eid {:keys [time]}] evs
-                                           :when (and time
-                                                      (> (- (System/currentTimeMillis) time)
-                                                         (* 5 60 1000)))]
-                                       [bid eid]))]
-                   (swap! r (fn [m]
-                              (reduce
-                               (fn [m [bid eid]]
-                                 (update-in m [bid] dissoc eid))
-                               m exp))))))))
-(x)
-;; (add-watch events ::print
-;;            (fn [k r ov nv]
-;;              (prn nv)))
+(def events (atom (fifo/fifo 1000)))
 
 (defn complete-event [event bid eid]
   (assoc event
     ::bid bid
     ::eid eid))
 
-(defn create-bot [server port nick password]
-  (let [bid (str (UUID/randomUUID))
-        b (pircbot server nick
-                   (t/fn> [event :- Event]
-                          (let [eid (str (UUID/randomUUID))
-                                completed-event (complete-event event bid eid)]
-                            (swap! events (t/fn> [m :- EventMap]
-                                                 (assoc-in m [bid eid] completed-event))))))]
-    (.put ^ConcurrentHashMap bots bid b)
-    {:status 201
-     :body bid}))
+(defn create-bot [bid server port nick password]
+  (if (.contains ^ConcurrentHashMap bots bid)
+    {:status 200
+     :body bid}
+    (let [b (pircbot (if password
+                       [server port password]
+                       server)
+                     nick
+                     (t/fn [event :- Event]
+                       (let [eid (str (UUID/randomUUID))
+                             completed-event (complete-event event bid eid)]
+                         (swap! events (t/fn [m :- Fifo] (fifo/add m bid eid completed-event))))))]
+      (assert bid)
+      (.put ^ConcurrentHashMap bots bid b)
+      {:status 201
+       :body bid})))
 
 (defn destroy-bot [bid]
   (let [bot (get-bot bid)]
@@ -237,42 +219,46 @@
 
 (defn get-events [bid]
   {:status 200
-   :body (pr-str (get @events bid))})
+   :body (pr-str (get (fifo/entries @events) bid))})
 
 (defn get-event [bid eid]
   {:status 200
-   :body (pr-str (get (get @events bid) eid))})
+   :body (pr-str (get (get (fifo/entries @events) bid) eid))})
 
 (defn delete-event [bid eid]
-  (swap! events (t/fn> [m :- EventMap] (update-in m [bid] dissoc eid)))
+  (swap! events (t/fn [m :- Fifo] (fifo/without m bid eid)))
   {:status 200
    :body (pr-str #{})})
+
+(defmacro send-fn [name]
+  `(t/fn [bot# :- PircBot
+          a# :- String
+          b# :- String]
+     (. ^PircBot bot# ~name ^String a# ^String b#)))
+
+(def send-message (send-fn sendMessage))
+
+(defmacro send- [method-name & args]
+  `(do
+     ~@(for [a args]
+         `(assert (contains? ~'m ~(keyword (name a)))))
+     (let [~@(for [n args i [(symbol (name n)) `(get ~'m ~(keyword (name n)) "")]] i)]
+       ~@(for [a args
+               i [`(assert (not (nil? ~(symbol (name a)))))
+                  `(assert (instance? String ~(symbol (name a))))]]
+           i)
+       (. ~'b ~method-name ~@(for [a args] (symbol (name a)))))))
 
 (defn send-out [bid body]
   (let [m (binding [*in* (-> body io/reader java.io.PushbackReader.)]
             (r/read))
         b (get-bot bid)]
-    (case (:type m)
-      :action (let [target (:target m)
-                    action (:action m)]
-                (assert (string? target))
-                (assert (string? action))
-                (.sendMessage b target action))
-      :invite (let [nick (:nick m)
-                    channel (:channel m)]
-                (assert (string? nick))
-                (assert (string? channel))
-                (.sendInvite b nick channel))
-      :message (let [target (:target m)
-                     message (:message m)]
-                 (assert (string? target))
-                 (assert (string? message))
-                 (.sendMessage b target message))
-      :notice (let [target (:target m)
-                    notice (:notice m)]
-                (assert (string? target))
-                (assert (string? notice))
-                (.sendNotice b target notice)))
+    (assert (map? m))
+    (condp = (:type m)
+      :action (send- sendMessage target action)
+      :invite (send- sendInvite nick channel)
+      :message (send- sendMessage target message)
+      :notice (send- sendNotice target notice))
     {:status 200
      :body (pr-str #{})}))
 
@@ -282,24 +268,28 @@
 (defn list-bots []
   {:status 200
    :body (pr-str (set
-                  (t/for> :- BotEntry
-                          [v :- (IMapEntry String PircBot) (bot-seq)]
-                          (let [id (key v)
-                                ^PircBot bot (val v)]
-                            (assert (string? id))
-                            (assert (instance? PircBot bot))
-                            {:nick (let [n (.getNick bot)]
-                                     (assert n)
-                                     n)
-                             :port (.getPort bot)
-                             :server (let [s (.getServer bot)]
-                                       (assert s)
-                                       s)
-                             ::bid id}))))})
+                  (map
+                   (t/fn [v :- (IMapEntry String PircBot)]
+                     (let [id (key v)
+                           ^PircBot bot (val v)]
+                       (assert (string? id))
+                       (assert (instance? PircBot bot))
+                       {:nick (let [n (.getNick bot)]
+                                (assert n)
+                                n)
+                        :port (.getPort bot)
+                        :server (let [s (.getServer bot)]
+                                  (assert s)
+                                  s)
+                        ::bid id}))
+                   (bot-seq))))})
 
 (defroutes irc
   (GET "/" [request] (list-bots))
-  (POST "/" {{:keys [server port nick password]} :params} (create-bot server port nick password))
+  (POST "/" {{:keys [server port nick password id]} :params}
+        (if id
+          (create-bot id server port nick password)
+          (create-bot (str (UUID/randomUUID)) server port nick password)))
   (DELETE "/:bid" {{:keys [bid]} :params} (destroy-bot bid))
   (GET "/:bid/channels" {{:keys [bid]} :params} (get-channels bid))
   (POST "/:bid/channel/:channel" {{:keys [bid channel]} :params} (join-channel bid channel))
